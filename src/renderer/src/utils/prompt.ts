@@ -94,7 +94,7 @@ Here are the rules you should always follow to solve your task:
 
 # User Instructions
 {{ USER_SYSTEM_PROMPT }}
-
+Response in user query language.
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 `
 
@@ -107,6 +107,7 @@ Before taking any action or responding to the user after receiving tool results,
 - Check if all required information is collected
 - Verify that the planned action complies with all policies
 - Iterate over tool results for correctness 
+- Response in user query language
 
 Here are some examples of what to iterate over inside the think tool:
 <think_tool_example_1>
