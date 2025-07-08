@@ -16,15 +16,16 @@ export enum ConfigKeys {
   ClickTrayToShowQuickAssistant = 'clickTrayToShowQuickAssistant',
   EnableQuickAssistant = 'enableQuickAssistant',
   AutoUpdate = 'autoUpdate',
-  EnableEarlyAccess = 'enableEarlyAccess',
-  UpgradeChannel = 'upgradeChannel',
+  TestPlan = 'testPlan',
+  TestChannel = 'testChannel',
   EnableDataCollection = 'enableDataCollection',
   SelectionAssistantEnabled = 'selectionAssistantEnabled',
   SelectionAssistantTriggerMode = 'selectionAssistantTriggerMode',
   SelectionAssistantFollowToolbar = 'selectionAssistantFollowToolbar',
   SelectionAssistantRemeberWinSize = 'selectionAssistantRemeberWinSize',
   SelectionAssistantFilterMode = 'selectionAssistantFilterMode',
-  SelectionAssistantFilterList = 'selectionAssistantFilterList'
+  SelectionAssistantFilterList = 'selectionAssistantFilterList',
+  DisableHardwareAcceleration = 'disableHardwareAcceleration'
 }
 
 export class ConfigManager {
@@ -143,20 +144,20 @@ export class ConfigManager {
     this.set(ConfigKeys.AutoUpdate, value)
   }
 
-  getEnableEarlyAccess(): boolean {
-    return this.get<boolean>(ConfigKeys.EnableEarlyAccess, false)
+  getTestPlan(): boolean {
+    return this.get<boolean>(ConfigKeys.TestPlan, false)
   }
 
-  setEnableEarlyAccess(value: boolean) {
-    this.set(ConfigKeys.EnableEarlyAccess, value)
+  setTestPlan(value: boolean) {
+    this.set(ConfigKeys.TestPlan, value)
   }
 
-  getUpgradeChannel(): UpgradeChannel {
-    return this.get<UpgradeChannel>(ConfigKeys.UpgradeChannel, UpgradeChannel.LATEST)
+  getTestChannel(): UpgradeChannel {
+    return this.get<UpgradeChannel>(ConfigKeys.TestChannel)
   }
 
-  setUpgradeChannel(value: UpgradeChannel) {
-    this.set(ConfigKeys.UpgradeChannel, value)
+  setTestChannel(value: UpgradeChannel) {
+    this.set(ConfigKeys.TestChannel, value)
   }
 
   getEnableDataCollection(): boolean {
@@ -216,6 +217,14 @@ export class ConfigManager {
 
   setSelectionAssistantFilterList(value: string[]) {
     this.setAndNotify(ConfigKeys.SelectionAssistantFilterList, value)
+  }
+
+  getDisableHardwareAcceleration(): boolean {
+    return this.get<boolean>(ConfigKeys.DisableHardwareAcceleration, false)
+  }
+
+  setDisableHardwareAcceleration(value: boolean) {
+    this.set(ConfigKeys.DisableHardwareAcceleration, value)
   }
 
   setAndNotify(key: string, value: unknown) {

@@ -157,8 +157,13 @@ async function fetchExternalTool(
     try {
       // Use the consolidated processWebsearch function
       WebSearchService.createAbortSignal(lastUserMessage.id)
+      const webSearchResponse = await WebSearchService.processWebsearch(
+        webSearchProvider!,
+        extractResults,
+        lastUserMessage.id
+      )
       return {
-        results: await WebSearchService.processWebsearch(webSearchProvider!, extractResults),
+        results: webSearchResponse,
         source: WebSearchSource.WEBSEARCH
       }
     } catch (error) {
@@ -354,9 +359,6 @@ export async function fetchChatCompletion({
 
   // --- Call AI Completions ---
   onChunkReceived({ type: ChunkType.LLM_RESPONSE_CREATED })
-  if (enableWebSearch) {
-    onChunkReceived({ type: ChunkType.LLM_WEB_SEARCH_IN_PROGRESS })
-  }
   await AI.completions(
     {
       callType: 'chat',
@@ -555,10 +557,6 @@ export async function fetchModels(provider: Provider): Promise<SdkModel[]> {
   }
 }
 
-export const formatApiKeys = (value: string) => {
-  return value.replaceAll('，', ',').replaceAll(' ', ',').replaceAll(' ', '').replaceAll('\n', ',')
-}
-
 export function checkApiProvider(provider: Provider): void {
   const key = 'api-check'
   const style = { marginTop: '3vh' }
@@ -602,6 +600,7 @@ export async function checkApi(provider: Provider, model: Model): Promise<void> 
         messages: 'hi',
         assistant,
         streamOutput: true,
+        enableReasoning: false,
         shouldThrow: true
       }
 

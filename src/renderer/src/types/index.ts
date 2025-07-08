@@ -3,6 +3,8 @@ import type { GenerateImagesConfig, GroundingMetadata, PersonGeneration } from '
 import type OpenAI from 'openai'
 import type { CSSProperties } from 'react'
 
+export * from './file'
+import type { FileMetadata } from './file'
 import type { Message } from './newMessage'
 
 export type Assistant = {
@@ -81,7 +83,7 @@ export type LegacyMessage = {
   status: 'sending' | 'pending' | 'searching' | 'success' | 'paused' | 'error'
   modelId?: string
   model?: Model
-  files?: FileType[]
+  files?: FileMetadata[]
   images?: string[]
   usage?: Usage
   metrics?: Metrics
@@ -172,8 +174,11 @@ export type ProviderType =
   | 'qwenlm'
   | 'azure-openai'
   | 'vertexai'
+  | 'mistral'
 
 export type ModelType = 'text' | 'vision' | 'embedding' | 'reasoning' | 'function_calling' | 'web_search'
+
+export type EndpointType = 'openai' | 'openai-response' | 'anthropic' | 'gemini' | 'image-generation' | 'jina-rerank'
 
 export type ModelPricing = {
   input_per_million_tokens: number
@@ -190,6 +195,8 @@ export type Model = {
   description?: string
   type?: ModelType[]
   pricing?: ModelPricing
+  endpoint_type?: EndpointType
+  supported_endpoint_types?: EndpointType[]
 }
 
 export type Suggestion = {
@@ -199,10 +206,10 @@ export type Suggestion = {
 export type PaintingParams = {
   id: string
   urls: string[]
-  files: FileType[]
+  files: FileMetadata[]
 }
 
-export type PaintingProvider = 'aihubmix' | 'silicon' | 'dmxapi'
+export type PaintingProvider = 'aihubmix' | 'silicon' | 'dmxapi' | 'new-api'
 
 export interface Painting extends PaintingParams {
   model?: string
@@ -237,7 +244,7 @@ export interface GeneratePainting extends PaintingParams {
 
 export interface EditPainting extends PaintingParams {
   imageFile: string
-  mask: FileType
+  mask: FileMetadata
   model: string
   prompt: string
   numImages?: number
@@ -311,6 +318,8 @@ export interface PaintingsState {
   upscale: Partial<ScalePainting> & PaintingParams[]
   DMXAPIPaintings: DmxapiPainting[]
   tokenFluxPaintings: TokenFluxPainting[]
+  openai_image_generate: Partial<GeneratePainting> & PaintingParams[]
+  openai_image_edit: Partial<EditPainting> & PaintingParams[]
 }
 
 export type MinAppType = {
@@ -325,28 +334,6 @@ export type MinAppType = {
   type?: 'Custom' | 'Default' // Added the 'type' property
 }
 
-export interface FileType {
-  id: string
-  name: string
-  origin_name: string
-  path: string
-  size: number
-  ext: string
-  type: FileTypes
-  created_at: string
-  count: number
-  tokens?: number
-}
-
-export enum FileTypes {
-  IMAGE = 'image',
-  VIDEO = 'video',
-  AUDIO = 'audio',
-  TEXT = 'text',
-  DOCUMENT = 'document',
-  OTHER = 'other'
-}
-
 export enum ThemeMode {
   light = 'light',
   dark = 'dark',
@@ -355,16 +342,7 @@ export enum ThemeMode {
 
 export type LanguageVarious = 'zh-CN' | 'zh-TW' | 'el-GR' | 'en-US' | 'es-ES' | 'fr-FR' | 'ja-JP' | 'pt-PT' | 'ru-RU'
 
-export type TranslateLanguageVarious =
-  | 'chinese'
-  | 'chinese-traditional'
-  | 'greek'
-  | 'english'
-  | 'spanish'
-  | 'french'
-  | 'japanese'
-  | 'portuguese'
-  | 'russian'
+export type TranslateLanguageVarious = LanguageCode
 
 export type CodeStyleVarious = 'auto' | string
 
@@ -409,7 +387,7 @@ export type KnowledgeItem = {
   uniqueId?: string
   uniqueIds?: string[]
   type: KnowledgeItemType
-  content: string | FileType
+  content: string | FileMetadata
   remark?: string
   created_at: number
   updated_at: number
@@ -417,6 +395,7 @@ export type KnowledgeItem = {
   processingProgress?: number
   processingError?: string
   retryCount?: number
+  isPreprocessed?: boolean
 }
 
 export interface KnowledgeBase {
@@ -435,6 +414,11 @@ export interface KnowledgeBase {
   threshold?: number
   rerankModel?: Model
   // topN?: number
+  // preprocessing?: boolean
+  preprocessOrOcrProvider?: {
+    type: 'preprocess' | 'ocr'
+    provider: PreprocessProvider | OcrProvider
+  }
 }
 
 export type KnowledgeBaseParams = {
@@ -452,6 +436,31 @@ export type KnowledgeBaseParams = {
   rerankModel?: string
   rerankModelProvider?: string
   documentCount?: number
+  // preprocessing?: boolean
+  preprocessOrOcrProvider?: {
+    type: 'preprocess' | 'ocr'
+    provider: PreprocessProvider | OcrProvider
+  }
+}
+
+export interface PreprocessProvider {
+  id: string
+  name: string
+  apiKey?: string
+  apiHost?: string
+  model?: string
+  options?: any
+  quota?: number
+}
+
+export interface OcrProvider {
+  id: string
+  name: string
+  apiKey?: string
+  apiHost?: string
+  model?: string
+  options?: any
+  quota?: number
 }
 
 export type GenerateImageParams = {
@@ -473,12 +482,41 @@ export type GenerateImageResponse = {
   images: string[]
 }
 
+export type LanguageCode =
+  | 'en-us'
+  | 'zh-cn'
+  | 'zh-tw'
+  | 'ja-jp'
+  | 'ko-kr'
+  | 'fr-fr'
+  | 'de-de'
+  | 'it-it'
+  | 'es-es'
+  | 'pt-pt'
+  | 'ru-ru'
+  | 'pl-pl'
+  | 'ar-ar'
+  | 'tr-tr'
+  | 'th-th'
+  | 'vi-vn'
+  | 'id-id'
+  | 'ur-pk'
+  | 'ms-my'
+
+// langCode应当能够唯一确认一种语言
+export type Language = {
+  value: string
+  langCode: LanguageCode
+  label: () => string
+  emoji: string
+}
+
 export interface TranslateHistory {
   id: string
   sourceText: string
   targetText: string
-  sourceLanguage: string
-  targetLanguage: string
+  sourceLanguage: LanguageCode
+  targetLanguage: LanguageCode
   createdAt: string
 }
 
@@ -500,7 +538,6 @@ export type WebSearchProvider = {
   url?: string
   basicAuthUsername?: string
   basicAuthPassword?: string
-  contentLimit?: number
   usingBrowser?: boolean
 }
 
@@ -542,12 +579,20 @@ export type WebSearchResponse = {
   source: WebSearchSource
 }
 
+export type WebSearchPhase = 'default' | 'fetch_complete' | 'rag' | 'rag_complete' | 'rag_failed' | 'cutoff'
+
+export type WebSearchStatus = {
+  phase: WebSearchPhase
+  countBefore?: number
+  countAfter?: number
+}
+
 export type KnowledgeReference = {
   id: number
   content: string
   sourceUrl: string
   type: KnowledgeItemType
-  file?: FileType
+  file?: FileMetadata
 }
 
 export type MCPArgType = 'string' | 'list' | 'number'
@@ -642,11 +687,13 @@ export interface MCPConfig {
   isBunInstalled: boolean
 }
 
+export type MCPToolResponseStatus = 'pending' | 'cancelled' | 'invoking' | 'done' | 'error'
+
 interface BaseToolResponse {
   id: string // unique id
   tool: MCPTool
   arguments: Record<string, unknown> | undefined
-  status: string // 'invoking' | 'done'
+  status: MCPToolResponseStatus
   response?: any
 }
 
@@ -707,9 +754,12 @@ export interface QuickPhrase {
 export interface Citation {
   number: number
   url: string
-  hostname: string
   title?: string
+  hostname?: string
   content?: string
+  showFavicon?: boolean
+  type?: string
+  metadata?: Record<string, any>
 }
 
 export type MathEngine = 'KaTeX' | 'MathJax' | 'none'
@@ -725,4 +775,19 @@ export interface StoreSyncAction {
 
 export type OpenAISummaryText = 'auto' | 'concise' | 'detailed' | 'off'
 export type OpenAIServiceTier = 'auto' | 'default' | 'flex'
+
+export type S3Config = {
+  endpoint: string
+  region: string
+  bucket: string
+  accessKeyId: string
+  secretAccessKey: string
+  root?: string
+  fileName?: string
+  skipBackupFile: boolean
+  autoSync: boolean
+  syncInterval: number
+  maxBackups: number
+}
+
 export type { Message } from './newMessage'

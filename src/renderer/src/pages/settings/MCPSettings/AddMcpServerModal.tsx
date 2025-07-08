@@ -46,7 +46,11 @@ const initialJsonExample = `// 示例 JSON (stdio):
 //   "mcpServers": {
 //     "streamable-http-example": {
 //       "type": "streamableHttp",
-//       "url": "http://localhost:3001"
+//       "url": "http://localhost:3001",
+//       "headers": {
+//         "Content-Type": "application/json",
+//         "Authorization": "Bearer your-token"
+//       }
 //     }
 //   }
 // }
