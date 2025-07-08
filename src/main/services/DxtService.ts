@@ -3,6 +3,7 @@ import logger from 'electron-log'
 import * as fs from 'fs'
 import StreamZip from 'node-stream-zip'
 import * as path from 'path'
+import * as os from 'os'
 import { v4 as uuidv4 } from 'uuid'
 
 // Type definitions
@@ -33,6 +34,13 @@ export interface DxtManifest {
       command: string
       args: string[]
       env?: Record<string, string>
+      platform_overrides?: {
+        [platform: string]: {
+          command?: string
+          args?: string[]
+          env?: Record<string, string>
+        }
+      }
     }
   }
   tools?: Array<{
@@ -56,6 +64,102 @@ export interface DxtUploadResult {
     extractDir: string
   }
   error?: string
+}
+
+// Platform detection and configuration utilities
+export function getPlatformIdentifier(): string {
+  const platform = os.platform()
+  switch (platform) {
+    case 'win32':
+      return 'win32'
+    case 'darwin':
+      return 'darwin'
+    case 'linux':
+      return 'linux'
+    default:
+      return platform
+  }
+}
+
+export function performVariableSubstitution(value: string, extractDir: string, userConfig?: Record<string, any>): string {
+  let result = value
+
+  // Replace ${__dirname} with the extraction directory
+  result = result.replace(/\$\{__dirname\}/g, extractDir)
+
+  // Replace ${HOME} with user's home directory
+  result = result.replace(/\$\{HOME\}/g, os.homedir())
+
+  // Replace ${DESKTOP} with user's desktop directory
+  const desktopDir = path.join(os.homedir(), 'Desktop')
+  result = result.replace(/\$\{DESKTOP\}/g, desktopDir)
+
+  // Replace ${DOCUMENTS} with user's documents directory
+  const documentsDir = path.join(os.homedir(), 'Documents')
+  result = result.replace(/\$\{DOCUMENTS\}/g, documentsDir)
+
+  // Replace ${pathSeparator} or ${/} with the platform-specific path separator
+  result = result.replace(/\$\{pathSeparator\}/g, path.sep)
+  result = result.replace(/\$\{\/\}/g, path.sep)
+
+  // Replace ${user_config.KEY} with user-configured values
+  if (userConfig) {
+    result = result.replace(/\$\{user_config\.([^}]+)\}/g, (match, key) => {
+      return userConfig[key] || match // Keep original if not found
+    })
+  }
+
+  return result
+}
+
+export function applyPlatformOverrides(mcpConfig: any, extractDir: string, userConfig?: Record<string, any>): any {
+  const platform = getPlatformIdentifier()
+  let resolvedConfig = { ...mcpConfig }
+
+  // Apply platform-specific overrides
+  if (mcpConfig.platform_overrides && mcpConfig.platform_overrides[platform]) {
+    const override = mcpConfig.platform_overrides[platform]
+    
+    // Override command if specified
+    if (override.command) {
+      resolvedConfig.command = override.command
+    }
+    
+    // Override args if specified
+    if (override.args) {
+      resolvedConfig.args = override.args
+    }
+    
+    // Merge environment variables
+    if (override.env) {
+      resolvedConfig.env = { ...resolvedConfig.env, ...override.env }
+    }
+  }
+
+  // Apply variable substitution to all string values
+  if (resolvedConfig.command) {
+    resolvedConfig.command = performVariableSubstitution(resolvedConfig.command, extractDir, userConfig)
+  }
+  
+  if (resolvedConfig.args) {
+    resolvedConfig.args = resolvedConfig.args.map((arg: string) => 
+      performVariableSubstitution(arg, extractDir, userConfig)
+    )
+  }
+  
+  if (resolvedConfig.env) {
+    for (const [key, value] of Object.entries(resolvedConfig.env)) {
+      resolvedConfig.env[key] = performVariableSubstitution(value as string, extractDir, userConfig)
+    }
+  }
+
+  return resolvedConfig
+}
+
+export interface ResolvedMcpConfig {
+  command: string
+  args: string[]
+  env?: Record<string, string>
 }
 
 class DxtService {
@@ -214,6 +318,42 @@ class DxtService {
         success: false,
         error: errorMessage
       }
+    }
+  }
+
+  /**
+   * Get resolved MCP configuration for a DXT server with platform overrides and variable substitution
+   */
+  public getResolvedMcpConfig(dxtPath: string, userConfig?: Record<string, any>): ResolvedMcpConfig | null {
+    try {
+      // Read the manifest from the DXT server directory
+      const manifestPath = path.join(dxtPath, 'manifest.json')
+      if (!fs.existsSync(manifestPath)) {
+        logger.error('[DxtService] Manifest not found:', manifestPath)
+        return null
+      }
+
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
+      const manifest: DxtManifest = JSON.parse(manifestContent)
+
+      if (!manifest.server?.mcp_config) {
+        logger.error('[DxtService] No mcp_config found in manifest')
+        return null
+      }
+
+      // Apply platform overrides and variable substitution
+      const resolvedConfig = applyPlatformOverrides(manifest.server.mcp_config, dxtPath, userConfig)
+
+      logger.info('[DxtService] Resolved MCP config:', {
+        command: resolvedConfig.command,
+        args: resolvedConfig.args,
+        env: resolvedConfig.env ? Object.keys(resolvedConfig.env) : undefined
+      })
+
+      return resolvedConfig
+    } catch (error) {
+      logger.error('[DxtService] Failed to resolve MCP config:', error)
+      return null
     }
   }
 

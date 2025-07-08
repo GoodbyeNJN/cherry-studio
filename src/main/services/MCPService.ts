@@ -139,7 +139,7 @@ class McpService {
         // Create new client instance for each connection
         const client = new Client({ name: 'Cherry Studio', version: app.getVersion() }, { capabilities: {} })
 
-        const args = [...(server.args || [])]
+        let args = [...(server.args || [])]
 
         // let transport: StdioClientTransport | SSEClientTransport | InMemoryTransport | StreamableHTTPClientTransport
         const authProvider = new McpOAuthClientProvider({
@@ -208,6 +208,23 @@ class McpService {
             }
           } else if (server.command) {
             let cmd = server.command
+            
+            // For DXT servers, use resolved configuration with platform overrides and variable substitution
+            if (server.dxtPath) {
+              const resolvedConfig = this.dxtService.getResolvedMcpConfig(server.dxtPath)
+              if (resolvedConfig) {
+                cmd = resolvedConfig.command
+                args = resolvedConfig.args
+                // Merge resolved environment variables with existing ones
+                server.env = {
+                  ...server.env,
+                  ...resolvedConfig.env
+                }
+                Logger.info(`[MCP] Using resolved DXT config - command: ${cmd}, args: ${args?.join(' ')}`)
+              } else {
+                Logger.warn(`[MCP] Failed to resolve DXT config for ${server.name}, falling back to manifest values`)
+              }
+            }
 
             if (server.command === 'npx') {
               cmd = await getBinaryPath('bun')
