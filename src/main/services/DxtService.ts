@@ -2,8 +2,8 @@ import { getMcpDir, getTempDir } from '@main/utils/file'
 import logger from 'electron-log'
 import * as fs from 'fs'
 import StreamZip from 'node-stream-zip'
-import * as path from 'path'
 import * as os from 'os'
+import * as path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 // Type definitions
@@ -66,22 +66,11 @@ export interface DxtUploadResult {
   error?: string
 }
 
-// Platform detection and configuration utilities
-export function getPlatformIdentifier(): string {
-  const platform = os.platform()
-  switch (platform) {
-    case 'win32':
-      return 'win32'
-    case 'darwin':
-      return 'darwin'
-    case 'linux':
-      return 'linux'
-    default:
-      return platform
-  }
-}
-
-export function performVariableSubstitution(value: string, extractDir: string, userConfig?: Record<string, any>): string {
+export function performVariableSubstitution(
+  value: string,
+  extractDir: string,
+  userConfig?: Record<string, any>
+): string {
   let result = value
 
   // Replace ${__dirname} with the extraction directory
@@ -98,6 +87,10 @@ export function performVariableSubstitution(value: string, extractDir: string, u
   const documentsDir = path.join(os.homedir(), 'Documents')
   result = result.replace(/\$\{DOCUMENTS\}/g, documentsDir)
 
+  // Replace ${DOWNLOADS} with user's downloads directory
+  const downloadsDir = path.join(os.homedir(), 'Downloads')
+  result = result.replace(/\$\{DOWNLOADS\}/g, downloadsDir)
+
   // Replace ${pathSeparator} or ${/} with the platform-specific path separator
   result = result.replace(/\$\{pathSeparator\}/g, path.sep)
   result = result.replace(/\$\{\/\}/g, path.sep)
@@ -113,23 +106,23 @@ export function performVariableSubstitution(value: string, extractDir: string, u
 }
 
 export function applyPlatformOverrides(mcpConfig: any, extractDir: string, userConfig?: Record<string, any>): any {
-  const platform = getPlatformIdentifier()
-  let resolvedConfig = { ...mcpConfig }
+  const platform = process.platform
+  const resolvedConfig = { ...mcpConfig }
 
   // Apply platform-specific overrides
   if (mcpConfig.platform_overrides && mcpConfig.platform_overrides[platform]) {
     const override = mcpConfig.platform_overrides[platform]
-    
+
     // Override command if specified
     if (override.command) {
       resolvedConfig.command = override.command
     }
-    
+
     // Override args if specified
     if (override.args) {
       resolvedConfig.args = override.args
     }
-    
+
     // Merge environment variables
     if (override.env) {
       resolvedConfig.env = { ...resolvedConfig.env, ...override.env }
@@ -140,13 +133,13 @@ export function applyPlatformOverrides(mcpConfig: any, extractDir: string, userC
   if (resolvedConfig.command) {
     resolvedConfig.command = performVariableSubstitution(resolvedConfig.command, extractDir, userConfig)
   }
-  
+
   if (resolvedConfig.args) {
-    resolvedConfig.args = resolvedConfig.args.map((arg: string) => 
+    resolvedConfig.args = resolvedConfig.args.map((arg: string) =>
       performVariableSubstitution(arg, extractDir, userConfig)
     )
   }
-  
+
   if (resolvedConfig.env) {
     for (const [key, value] of Object.entries(resolvedConfig.env)) {
       resolvedConfig.env[key] = performVariableSubstitution(value as string, extractDir, userConfig)

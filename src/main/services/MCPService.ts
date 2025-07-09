@@ -208,7 +208,7 @@ class McpService {
             }
           } else if (server.command) {
             let cmd = server.command
-            
+
             // For DXT servers, use resolved configuration with platform overrides and variable substitution
             if (server.dxtPath) {
               const resolvedConfig = this.dxtService.getResolvedMcpConfig(server.dxtPath)
