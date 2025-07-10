@@ -37,6 +37,7 @@ import type { MessageInputBaseParams } from '@renderer/types/newMessage'
 import { classNames, delay, formatFileSize, getFileExtension } from '@renderer/utils'
 import { formatQuotedText } from '@renderer/utils/formats'
 import { getFilesFromDropEvent, getSendMessageShortcutLabel, isSendMessageKeyPressed } from '@renderer/utils/input'
+import { getLanguageByLangcode } from '@renderer/utils/translate'
 import { documentExts, imageExts, textExts } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 import { Button, Tooltip } from 'antd'
@@ -239,7 +240,7 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
       setText('')
       setFiles([])
       setTimeout(() => setText(''), 500)
-      setTimeout(() => resizeTextArea(), 0)
+      setTimeout(() => resizeTextArea(true), 0)
       setExpend(false)
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -253,7 +254,7 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
 
     try {
       setIsTranslating(true)
-      const translatedText = await translateText(text, targetLanguage)
+      const translatedText = await translateText(text, getLanguageByLangcode(targetLanguage))
       translatedText && setText(translatedText)
       setTimeout(() => resizeTextArea(), 0)
     } catch (error) {
@@ -863,7 +864,10 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
             onInput={onInput}
             disabled={searching}
             onPaste={(e) => onPaste(e.nativeEvent)}
-            onClick={() => searching && dispatch(setSearching(false))}
+            onClick={() => {
+              searching && dispatch(setSearching(false))
+              quickPanel.close()
+            }}
           />
           <DragHandle onMouseDown={handleDragStart}>
             <HolderOutlined />
@@ -905,7 +909,7 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
               />
               <TranslateButton text={text} onTranslated={onTranslated} isLoading={isTranslating} />
               {loading && (
-                <Tooltip placement="top" title={t('chat.input.pause')} arrow>
+                <Tooltip placement="top" title={t('chat.input.pause')} mouseLeaveDelay={0} arrow>
                   <ToolbarButton type="text" onClick={onPause} style={{ marginRight: -2, marginTop: 1 }}>
                     <CirclePause style={{ color: 'var(--color-error)', fontSize: 20 }} />
                   </ToolbarButton>

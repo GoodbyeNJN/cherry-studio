@@ -2,12 +2,13 @@ import { GenericChunk } from '@renderer/aiCore/middleware/schemas'
 import { CompletionsContext } from '@renderer/aiCore/middleware/types'
 import {
   isOpenAIChatCompletionOnlyModel,
+  isOpenAILLMModel,
   isSupportedReasoningEffortOpenAIModel,
   isVisionModel
 } from '@renderer/config/models'
 import { estimateTextTokens } from '@renderer/services/TokenService'
 import {
-  FileType,
+  FileMetadata,
   FileTypes,
   MCPCallToolResponse,
   MCPTool,
@@ -63,10 +64,10 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
    * 根据模型特征选择合适的客户端
    */
   public getClient(model: Model) {
-    if (isOpenAIChatCompletionOnlyModel(model)) {
-      return this.client
-    } else {
+    if (isOpenAILLMModel(model) && !isOpenAIChatCompletionOnlyModel(model)) {
       return this
+    } else {
+      return this.client
     }
   }
 
@@ -94,7 +95,7 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
     return await sdk.responses.create(payload, options)
   }
 
-  private async handlePdfFile(file: FileType): Promise<OpenAI.Responses.ResponseInputFile | undefined> {
+  private async handlePdfFile(file: FileMetadata): Promise<OpenAI.Responses.ResponseInputFile | undefined> {
     if (file.size > 32 * MB) return undefined
     try {
       const pageCount = await window.api.file.pdfInfo(file.id + file.ext)
@@ -419,6 +420,8 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
     const outputItems: OpenAI.Responses.ResponseOutputItem[] = []
     let hasBeenCollectedToolCalls = false
     let hasReasoningSummary = false
+    let isFirstThinkingChunk = true
+    let isFirstTextChunk = true
     return () => ({
       async transform(chunk: OpenAIResponseSdkRawChunk, controller: TransformStreamDefaultController<GenericChunk>) {
         // 处理chunk
@@ -430,6 +433,12 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
             switch (output.type) {
               case 'message':
                 if (output.content[0].type === 'output_text') {
+                  if (isFirstTextChunk) {
+                    controller.enqueue({
+                      type: ChunkType.TEXT_START
+                    })
+                    isFirstTextChunk = false
+                  }
                   controller.enqueue({
                     type: ChunkType.TEXT_DELTA,
                     text: output.content[0].text
@@ -446,6 +455,12 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
                 }
                 break
               case 'reasoning':
+                if (isFirstThinkingChunk) {
+                  controller.enqueue({
+                    type: ChunkType.THINKING_START
+                  })
+                  isFirstThinkingChunk = false
+                }
                 controller.enqueue({
                   type: ChunkType.THINKING_DELTA,
                   text: output.summary.map((s) => s.text).join('\n')
@@ -488,6 +503,10 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
             case 'response.output_item.added':
               if (chunk.item.type === 'function_call') {
                 outputItems.push(chunk.item)
+              } else if (chunk.item.type === 'web_search_call') {
+                controller.enqueue({
+                  type: ChunkType.LLM_WEB_SEARCH_IN_PROGRESS
+                })
               }
               break
             case 'response.reasoning_summary_part.added':
@@ -501,6 +520,12 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
               hasReasoningSummary = true
               break
             case 'response.reasoning_summary_text.delta':
+              if (isFirstThinkingChunk) {
+                controller.enqueue({
+                  type: ChunkType.THINKING_START
+                })
+                isFirstThinkingChunk = false
+              }
               controller.enqueue({
                 type: ChunkType.THINKING_DELTA,
                 text: chunk.delta
@@ -526,6 +551,12 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
               })
               break
             case 'response.output_text.delta': {
+              if (isFirstTextChunk) {
+                controller.enqueue({
+                  type: ChunkType.TEXT_START
+                })
+                isFirstTextChunk = false
+              }
               controller.enqueue({
                 type: ChunkType.TEXT_DELTA,
                 text: chunk.delta

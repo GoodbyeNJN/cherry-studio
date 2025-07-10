@@ -374,9 +374,6 @@ export async function fetchChatCompletion({
 
   // --- Call AI Completions ---
   onChunkReceived({ type: ChunkType.LLM_RESPONSE_CREATED })
-  if (enableWebSearch) {
-    onChunkReceived({ type: ChunkType.LLM_WEB_SEARCH_IN_PROGRESS })
-  }
   await AI.completions(
     {
       callType: 'chat',
@@ -573,10 +570,6 @@ export async function fetchModels(provider: Provider): Promise<SdkModel[]> {
   } catch (error) {
     return []
   }
-}
-
-export const formatApiKeys = (value: string) => {
-  return value.replaceAll('，', ',').replaceAll(' ', ',').replaceAll(' ', '').replaceAll('\n', ',')
 }
 
 export function checkApiProvider(provider: Provider): void {
