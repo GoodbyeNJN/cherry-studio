@@ -1,3 +1,11 @@
+> [!NOTE]
+>
+> This repo is a **FORK** of [Cherry Studio](https://github.com/CherryHQ/cherry-studio) and is **NOT** maintained by Cherry Studio Community.
+>
+> Including all the latest features and bug fixes from the original repo, but with some additional features and improvements:
+>
+> - Added external control service for controlling the app from scripts or other applications. See [External Control Usage](./docs/external-control-usage.md) for details.
+
 <div align="right" >
   <details>
     <summary >🌐 Language</summary>
