@@ -796,3 +796,4 @@ export type S3Config = {
 }
 
 export type { Message } from './newMessage'
+export type { MiniWindowRoute, ShowMiniWindowArgs } from './windows'

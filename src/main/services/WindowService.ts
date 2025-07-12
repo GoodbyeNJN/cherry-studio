@@ -5,6 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import { isDev, isLinux, isMac, isWin } from '@main/constant'
 import { getFilesDir } from '@main/utils/file'
 import { IpcChannel } from '@shared/IpcChannel'
+import { ShowMiniWindowArgs } from '@types'
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import Logger from 'electron-log'
 import windowStateKeeper from 'electron-window-state'
@@ -25,6 +26,7 @@ export class WindowService {
   //to restore the focus status when miniWindow hides
   private wasMainWindowFocused: boolean = false
   private lastRendererProcessCrashTime: number = 0
+  private lastShowMiniWindowArgs: ShowMiniWindowArgs | undefined = undefined
 
   public static getInstance(): WindowService {
     if (!WindowService.instance) {
@@ -486,7 +488,8 @@ export class WindowService {
     })
 
     this.miniWindow.on('show', () => {
-      this.miniWindow?.webContents.send(IpcChannel.ShowMiniWindow)
+      this.miniWindow?.webContents.send(IpcChannel.ShowMiniWindow, this.lastShowMiniWindowArgs)
+      this.lastShowMiniWindowArgs = undefined
     })
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -498,12 +501,14 @@ export class WindowService {
     return this.miniWindow
   }
 
-  public showMiniWindow() {
+  public showMiniWindow(args?: ShowMiniWindowArgs) {
     const enableQuickAssistant = configManager.getEnableQuickAssistant()
 
     if (!enableQuickAssistant) {
       return
     }
+
+    this.lastShowMiniWindowArgs = args
 
     if (this.miniWindow && !this.miniWindow.isDestroyed()) {
       this.wasMainWindowFocused = this.mainWindow?.isFocused() || false
@@ -539,13 +544,13 @@ export class WindowService {
     this.miniWindow?.close()
   }
 
-  public toggleMiniWindow() {
+  public toggleMiniWindow(args?: ShowMiniWindowArgs) {
     if (this.miniWindow && !this.miniWindow.isDestroyed() && this.miniWindow.isVisible()) {
       this.hideMiniWindow()
       return
     }
 
-    this.showMiniWindow()
+    this.showMiniWindow(args)
   }
 
   public setPinMiniWindow(isPinned) {

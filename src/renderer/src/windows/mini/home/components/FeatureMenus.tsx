@@ -1,15 +1,14 @@
 import { EnterOutlined } from '@ant-design/icons'
 import Scrollbar from '@renderer/components/Scrollbar'
+import { MiniWindowRoute } from '@renderer/types'
 import { Col } from 'antd'
 import { FileText, Languages, Lightbulb, MessageSquare } from 'lucide-react'
-import { Dispatch, SetStateAction, useImperativeHandle, useMemo, useState } from 'react'
+import { useImperativeHandle, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 interface FeatureMenusProps {
-  text: string
-  setRoute: Dispatch<SetStateAction<'translate' | 'summary' | 'chat' | 'explanation' | 'home'>>
-  onSendMessage: (prompt?: string) => void
+  onClick: (route: MiniWindowRoute) => void
 }
 
 export interface FeatureMenusRef {
@@ -19,12 +18,7 @@ export interface FeatureMenusRef {
   resetSelectedIndex: () => void
 }
 
-const FeatureMenus = ({
-  ref,
-  text,
-  setRoute,
-  onSendMessage
-}: FeatureMenusProps & { ref?: React.RefObject<FeatureMenusRef | null> }) => {
+const FeatureMenus = ({ ref, onClick }: FeatureMenusProps & { ref?: React.RefObject<FeatureMenusRef | null> }) => {
   const { t } = useTranslation()
   const [selectedIndex, setSelectedIndex] = useState(0)
 
@@ -34,40 +28,25 @@ const FeatureMenus = ({
         icon: <MessageSquare size={16} color="var(--color-text)" />,
         title: t('miniwindow.feature.chat'),
         active: true,
-        onClick: () => {
-          if (text) {
-            setRoute('chat')
-            onSendMessage()
-          }
-        }
+        onClick: () => onClick('chat')
       },
       {
         icon: <Languages size={16} color="var(--color-text)" />,
         title: t('miniwindow.feature.translate'),
-        onClick: () => text && setRoute('translate')
+        onClick: () => onClick('translate')
       },
       {
         icon: <FileText size={16} color="var(--color-text)" />,
         title: t('miniwindow.feature.summary'),
-        onClick: () => {
-          if (text) {
-            setRoute('summary')
-            onSendMessage(t('prompts.summarize'))
-          }
-        }
+        onClick: () => onClick('summary')
       },
       {
         icon: <Lightbulb size={16} color="var(--color-text)" />,
         title: t('miniwindow.feature.explanation'),
-        onClick: () => {
-          if (text) {
-            setRoute('explanation')
-            onSendMessage(t('prompts.explanation'))
-          }
-        }
+        onClick: () => onClick('explanation')
       }
     ],
-    [onSendMessage, setRoute, t, text]
+    [t, onClick]
   )
 
   useImperativeHandle(ref, () => ({

@@ -192,7 +192,7 @@ export class ExternalControlService {
         break
       }
       case 'showQuickAssistant': {
-        windowService.showMiniWindow()
+        windowService.showMiniWindow(args)
         break
       }
       case 'hideQuickAssistant': {
@@ -200,7 +200,7 @@ export class ExternalControlService {
         break
       }
       case 'toggleQuickAssistant': {
-        windowService.toggleMiniWindow()
+        windowService.toggleMiniWindow(args)
         break
       }
       case undefined:

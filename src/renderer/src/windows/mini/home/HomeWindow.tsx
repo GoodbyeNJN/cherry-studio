@@ -1,25 +1,17 @@
 import { isMac } from '@renderer/config/constant'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useAssistant } from '@renderer/hooks/useAssistant'
+import { useMiniWindow, useSendMessage } from '@renderer/hooks/useMiniWindow'
 import { useSettings } from '@renderer/hooks/useSettings'
 import i18n from '@renderer/i18n'
-import { fetchChatCompletion } from '@renderer/services/ApiService'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
-import { getAssistantMessage, getUserMessage } from '@renderer/services/MessagesService'
 import store, { useAppSelector } from '@renderer/store'
-import { updateOneBlock, upsertManyBlocks, upsertOneBlock } from '@renderer/store/messageBlock'
-import { newMessagesActions, selectMessagesForTopic } from '@renderer/store/newMessage'
-import { ThemeMode, Topic } from '@renderer/types'
-import { Chunk, ChunkType } from '@renderer/types/chunk'
-import { AssistantMessageStatus, MessageBlockStatus } from '@renderer/types/newMessage'
-import { abortCompletion } from '@renderer/utils/abortController'
-import { isAbortError } from '@renderer/utils/error'
-import { createMainTextBlock, createThinkingBlock } from '@renderer/utils/messageUtils/create'
+import { selectMessagesForTopic } from '@renderer/store/newMessage'
+import { MiniWindowRoute, ShowMiniWindowArgs, ThemeMode, Topic } from '@renderer/types'
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { defaultLanguage } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 import { Divider } from 'antd'
-import { isEmpty } from 'lodash'
 import { last } from 'lodash'
 import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -37,22 +29,20 @@ const HomeWindow: FC = () => {
   const { theme } = useTheme()
   const { t } = useTranslation()
 
-  const [route, setRoute] = useState<'home' | 'chat' | 'translate' | 'summary' | 'explanation'>('home')
-  const [isFirstMessage, setIsFirstMessage] = useState(true)
+  const {
+    route,
+    userInputText,
+    clipboardText,
+    referenceText,
+    userContent,
+    setRoute,
+    setUserInputText,
+    setClipboardText
+  } = useMiniWindow()
 
-  const [userInputText, setUserInputText] = useState('')
-
-  const [clipboardText, setClipboardText] = useState('')
   const lastClipboardTextRef = useRef<string | null>(null)
 
   const [isPinned, setIsPinned] = useState(false)
-
-  // Indicator for loading(thinking/streaming)
-  const [isLoading, setIsLoading] = useState(false)
-  // Indicator for whether the first message is outputted
-  const [isOutputted, setIsOutputted] = useState(false)
-
-  const [error, setError] = useState<string | null>(null)
 
   const { quickAssistantId } = useAppSelector((state) => state.llm)
   const { assistant: currentAssistant } = useAssistant(quickAssistantId)
@@ -60,29 +50,18 @@ const HomeWindow: FC = () => {
   const currentTopic = useRef<Topic>(getDefaultTopic(currentAssistant.id))
   const currentAskId = useRef('')
 
+  const { isLoading, isOutputted, error, sendMessage, pause, reset } = useSendMessage({
+    topicRef: currentTopic,
+    assistant: currentAssistant,
+    askIdRef: currentAskId
+  })
+
   const inputBarRef = useRef<HTMLDivElement>(null)
   const featureMenusRef = useRef<FeatureMenusRef>(null)
-
-  const referenceText = useMemo(() => clipboardText || userInputText, [clipboardText, userInputText])
-
-  const userContent = useMemo(() => {
-    if (isFirstMessage) {
-      return referenceText === userInputText ? userInputText : `${referenceText}\n\n${userInputText}`.trim()
-    }
-    return userInputText.trim()
-  }, [isFirstMessage, referenceText, userInputText])
 
   useEffect(() => {
     i18n.changeLanguage(language || navigator.language || defaultLanguage)
   }, [language])
-
-  // Reset state when switching to home route
-  useEffect(() => {
-    if (route === 'home') {
-      setIsFirstMessage(true)
-      setError(null)
-    }
-  }, [route])
 
   const focusInput = useCallback(() => {
     if (inputBarRef.current) {
@@ -107,31 +86,17 @@ const HomeWindow: FC = () => {
       // Silently handle clipboard read errors (common in some environments)
       console.warn('Failed to read clipboard:', error)
     }
-  }, [readClipboardAtStartup])
+  }, [readClipboardAtStartup, setClipboardText])
 
   const clearClipboard = useCallback(async () => {
     setClipboardText('')
     lastClipboardTextRef.current = null
     focusInput()
-  }, [focusInput])
-
-  const onWindowShow = useCallback(async () => {
-    featureMenusRef.current?.resetSelectedIndex()
-    await readClipboard()
-    focusInput()
-  }, [readClipboard, focusInput])
+  }, [focusInput, setClipboardText])
 
   useEffect(() => {
     window.api.miniWindow.setPin(isPinned)
   }, [isPinned])
-
-  useEffect(() => {
-    window.electron.ipcRenderer.on(IpcChannel.ShowMiniWindow, onWindowShow)
-
-    return () => {
-      window.electron.ipcRenderer.removeAllListeners(IpcChannel.ShowMiniWindow)
-    }
-  }, [onWindowShow])
 
   useEffect(() => {
     readClipboard()
@@ -162,7 +127,7 @@ const HomeWindow: FC = () => {
             } else {
               // Currently text input is only available in 'chat' mode
               setRoute('chat')
-              handleSendMessage()
+              sendMessage()
               focusInput()
             }
           }
@@ -203,208 +168,17 @@ const HomeWindow: FC = () => {
     setUserInputText(e.target.value)
   }
 
-  const handleError = (error: Error) => {
-    setIsLoading(false)
-    setError(error.message)
-  }
-
-  const handleSendMessage = useCallback(
-    async (prompt?: string) => {
-      if (isEmpty(userContent) || !currentTopic.current) {
-        return
-      }
-
-      try {
-        const topicId = currentTopic.current.id
-
-        const { message: userMessage, blocks } = getUserMessage({
-          content: [prompt, userContent].filter(Boolean).join('\n\n'),
-          assistant: currentAssistant,
-          topic: currentTopic.current
-        })
-
-        store.dispatch(newMessagesActions.addMessage({ topicId, message: userMessage }))
-        store.dispatch(upsertManyBlocks(blocks))
-
-        const assistantMessage = getAssistantMessage({
-          assistant: currentAssistant,
-          topic: currentTopic.current
-        })
-        assistantMessage.askId = userMessage.id
-        currentAskId.current = userMessage.id
-
-        store.dispatch(newMessagesActions.addMessage({ topicId, message: assistantMessage }))
-
-        const allMessagesForTopic = selectMessagesForTopic(store.getState(), topicId)
-        const userMessageIndex = allMessagesForTopic.findIndex((m) => m?.id === userMessage.id)
-
-        const messagesForContext = allMessagesForTopic
-          .slice(0, userMessageIndex + 1)
-          .filter((m) => m && !m.status?.includes('ing'))
-
-        let blockId: string | null = null
-        let blockContent: string = ''
-        let thinkingBlockId: string | null = null
-        let thinkingBlockContent: string = ''
-
-        setIsLoading(true)
-        setIsOutputted(false)
-        setError(null)
-
-        setIsFirstMessage(false)
-        setUserInputText('')
-
-        await fetchChatCompletion({
-          messages: messagesForContext,
-          assistant: { ...currentAssistant, settings: { streamOutput: true } },
-          onChunkReceived: (chunk: Chunk) => {
-            switch (chunk.type) {
-              case ChunkType.THINKING_DELTA:
-                {
-                  thinkingBlockContent += chunk.text
-                  setIsOutputted(true)
-                  if (!thinkingBlockId) {
-                    const block = createThinkingBlock(assistantMessage.id, chunk.text, {
-                      status: MessageBlockStatus.STREAMING,
-                      thinking_millsec: chunk.thinking_millsec
-                    })
-                    thinkingBlockId = block.id
-                    store.dispatch(
-                      newMessagesActions.updateMessage({
-                        topicId,
-                        messageId: assistantMessage.id,
-                        updates: { blockInstruction: { id: block.id } }
-                      })
-                    )
-                    store.dispatch(upsertOneBlock(block))
-                  } else {
-                    store.dispatch(
-                      updateOneBlock({
-                        id: thinkingBlockId,
-                        changes: { content: thinkingBlockContent, thinking_millsec: chunk.thinking_millsec }
-                      })
-                    )
-                  }
-                }
-                break
-              case ChunkType.THINKING_COMPLETE:
-                {
-                  if (thinkingBlockId) {
-                    store.dispatch(
-                      updateOneBlock({
-                        id: thinkingBlockId,
-                        changes: { status: MessageBlockStatus.SUCCESS, thinking_millsec: chunk.thinking_millsec }
-                      })
-                    )
-                  }
-                }
-                break
-              case ChunkType.TEXT_DELTA:
-                {
-                  blockContent += chunk.text
-                  setIsOutputted(true)
-                  if (!blockId) {
-                    const block = createMainTextBlock(assistantMessage.id, chunk.text, {
-                      status: MessageBlockStatus.STREAMING
-                    })
-                    blockId = block.id
-                    store.dispatch(
-                      newMessagesActions.updateMessage({
-                        topicId,
-                        messageId: assistantMessage.id,
-                        updates: { blockInstruction: { id: block.id } }
-                      })
-                    )
-                    store.dispatch(upsertOneBlock(block))
-                  } else {
-                    store.dispatch(updateOneBlock({ id: blockId, changes: { content: blockContent } }))
-                  }
-                }
-                break
-
-              case ChunkType.TEXT_COMPLETE:
-                {
-                  blockId &&
-                    store.dispatch(updateOneBlock({ id: blockId, changes: { status: MessageBlockStatus.SUCCESS } }))
-                  store.dispatch(
-                    newMessagesActions.updateMessage({
-                      topicId,
-                      messageId: assistantMessage.id,
-                      updates: { status: AssistantMessageStatus.SUCCESS }
-                    })
-                  )
-                }
-                break
-              case ChunkType.ERROR: {
-                //stop the thinking timer
-                const isAborted = isAbortError(chunk.error)
-                const possibleBlockId = thinkingBlockId || blockId
-                if (possibleBlockId) {
-                  store.dispatch(
-                    updateOneBlock({
-                      id: possibleBlockId,
-                      changes: {
-                        status: isAborted ? MessageBlockStatus.PAUSED : MessageBlockStatus.ERROR
-                      }
-                    })
-                  )
-                }
-                if (!isAborted) {
-                  throw new Error(chunk.error.message)
-                }
-              }
-              //fall through
-              case ChunkType.BLOCK_COMPLETE:
-                setIsLoading(false)
-                setIsOutputted(true)
-                currentAskId.current = ''
-                break
-            }
-          }
-        })
-      } catch (err) {
-        if (isAbortError(err)) return
-        handleError(err instanceof Error ? err : new Error('An error occurred'))
-        console.error('Error fetching result:', err)
-      } finally {
-        setIsLoading(false)
-        setIsOutputted(true)
-        currentAskId.current = ''
-      }
-    },
-    [userContent, currentAssistant]
-  )
-
-  const handlePause = useCallback(() => {
-    if (currentAskId.current) {
-      abortCompletion(currentAskId.current)
-      setIsLoading(false)
-      setIsOutputted(true)
-      currentAskId.current = ''
-    }
-  }, [])
-
   const handleEsc = useCallback(() => {
     if (isLoading) {
-      handlePause()
+      pause()
     } else {
       if (route === 'home') {
         handleCloseWindow()
       } else {
-        // Clear the topic messages to reduce memory usage
-        if (currentTopic.current) {
-          store.dispatch(newMessagesActions.clearTopicMessages(currentTopic.current.id))
-        }
-
-        // Reset the topic
-        currentTopic.current = getDefaultTopic(currentAssistant.id)
-
-        setError(null)
-        setRoute('home')
-        setUserInputText('')
+        reset()
       }
     }
-  }, [isLoading, route, handleCloseWindow, currentAssistant.id, handlePause])
+  }, [isLoading, route, handleCloseWindow, pause, reset])
 
   const handleCopy = useCallback(() => {
     if (!currentTopic.current) return
@@ -418,6 +192,76 @@ const HomeWindow: FC = () => {
       window.message.success(t('message.copy.success'))
     }
   }, [currentTopic, t])
+
+  const handleFeatureMenuItemClick = useCallback(
+    (route: MiniWindowRoute) => {
+      switch (route) {
+        case 'home':
+          setRoute('home')
+          break
+        case 'chat':
+          if (userContent) {
+            setRoute('chat')
+            sendMessage()
+          }
+          break
+        case 'translate':
+          if (userContent) {
+            setRoute('translate')
+          }
+          break
+        case 'summary':
+          if (userContent) {
+            setRoute('summary')
+            sendMessage(t('prompts.summarize'))
+          }
+          break
+        case 'explanation':
+          if (userContent) {
+            setRoute('explanation')
+            sendMessage(t('prompts.explain'))
+          }
+          break
+      }
+    },
+    [t, userContent, setRoute, sendMessage]
+  )
+
+  const onWindowShow = useCallback(
+    async (_: unknown, args?: ShowMiniWindowArgs) => {
+      if (!args) {
+        featureMenusRef.current?.resetSelectedIndex()
+        await readClipboard()
+        focusInput()
+        return
+      }
+
+      const { route, userInputText, clipboardText } = args || {}
+
+      featureMenusRef.current?.resetSelectedIndex()
+      if (userInputText !== undefined) {
+        setUserInputText(userInputText)
+      }
+      if (clipboardText !== undefined) {
+        lastClipboardTextRef.current = clipboardText
+        setClipboardText(clipboardText.trim())
+      }
+      focusInput()
+
+      if (route) {
+        handleFeatureMenuItemClick(route)
+      }
+    },
+    [readClipboard, focusInput, setUserInputText, setClipboardText, handleFeatureMenuItemClick]
+  )
+
+  useEffect(() => {
+    window.electron.ipcRenderer.on(IpcChannel.ShowMiniWindow, onWindowShow)
+
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners(IpcChannel.ShowMiniWindow)
+    }
+  }, [onWindowShow])
 
   const backgroundColor = useMemo(() => {
     // ONLY MAC: when transparent style + light theme: use vibrancy effect
@@ -515,12 +359,7 @@ const HomeWindow: FC = () => {
           <Divider style={{ margin: '10px 0' }} />
           <ClipboardPreview referenceText={referenceText} clearClipboard={clearClipboard} t={t} />
           <Main>
-            <FeatureMenus
-              setRoute={setRoute}
-              onSendMessage={handleSendMessage}
-              text={userContent}
-              ref={featureMenusRef}
-            />
+            <FeatureMenus onClick={handleFeatureMenuItemClick} ref={featureMenusRef} />
           </Main>
           <Divider style={{ margin: '10px 0' }} />
           <Footer

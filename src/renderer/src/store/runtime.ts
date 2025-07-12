@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { AppLogo, UserAvatar } from '@renderer/config/env'
-import type { MinAppType, Topic, WebSearchStatus } from '@renderer/types'
+import type { MinAppType, MiniWindowRoute, Topic, WebSearchStatus } from '@renderer/types'
 import type { UpdateInfo } from 'builder-util-runtime'
 
 export interface ChatState {
@@ -26,6 +26,12 @@ export interface UpdateState {
   available: boolean
 }
 
+export interface MiniWindowState {
+  route: MiniWindowRoute
+  userInputText: string
+  clipboardText: string
+}
+
 export interface RuntimeState {
   avatar: string
   generating: boolean
@@ -44,6 +50,7 @@ export interface RuntimeState {
   export: ExportState
   chat: ChatState
   websearch: WebSearchState
+  miniWindow: MiniWindowState
 }
 
 export interface ExportState {
@@ -80,6 +87,11 @@ const initialState: RuntimeState = {
   },
   websearch: {
     activeSearches: {}
+  },
+  miniWindow: {
+    route: 'home',
+    userInputText: '',
+    clipboardText: ''
   }
 }
 
@@ -149,6 +161,15 @@ const runtimeSlice = createSlice({
         delete state.websearch.activeSearches[requestId]
       }
       state.websearch.activeSearches[requestId] = status
+    },
+    setMiniWindowRoute: (state, action: PayloadAction<MiniWindowRoute>) => {
+      state.miniWindow.route = action.payload
+    },
+    setMiniWindowUserInputText: (state, action: PayloadAction<string>) => {
+      state.miniWindow.userInputText = action.payload
+    },
+    setMiniWindowClipboardText: (state, action: PayloadAction<string>) => {
+      state.miniWindow.clipboardText = action.payload
     }
   }
 })
@@ -173,7 +194,10 @@ export const {
   setNewlyRenamedTopics,
   // WebSearch related actions
   setActiveSearches,
-  setWebSearchStatus
+  setWebSearchStatus,
+  setMiniWindowRoute,
+  setMiniWindowUserInputText,
+  setMiniWindowClipboardText
 } = runtimeSlice.actions
 
 export default runtimeSlice.reducer
