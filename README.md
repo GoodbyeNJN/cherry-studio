@@ -5,6 +5,8 @@
 > Including all the latest features and bug fixes from the original repo, but with some additional features and improvements:
 >
 > - Added external control service for controlling the app from scripts or other applications. See [External Control Usage](./docs/external-control-usage.md) for details.
+>
+> Version numbers follow the format `x.y.z-patch`, where `x.y.z` indicates all features and fixes included from the corresponding version of the original repository, and `patch` represents the number of revisions made on top of the original code. E.g., `1.0.0-1` means it includes all features and fixes from version `1.0.0` of the original repository, plus one additional patch.
 
 <div align="right" >
   <details>
